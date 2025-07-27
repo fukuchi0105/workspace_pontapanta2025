@@ -1,0 +1,28 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${workspaceFolder}/.vscode/browse.vc.db",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/opt/ros/humble/include/**",
+        "/home/nobuakif/aichallenge-2025/aichallenge/workspace/src/aichallenge_submit/gyro_odometer/include/**",
+        "/home/nobuakif/aichallenge-2025/aichallenge/workspace/src/aichallenge_submit/imu_corrector/include/**",
+        "/home/nobuakif/aichallenge-2025/aichallenge/workspace/src/aichallenge_submit/path_to_trajectory/include/**",
+        "/home/nobuakif/aichallenge-2025/aichallenge/workspace/src/aichallenge_submit/racing_kart_gnss_poser/include/**",
+        "/home/nobuakif/aichallenge-2025/aichallenge/workspace/src/aichallenge_submit/simple_pure_pursuit/include/**",
+        "/home/nobuakif/aichallenge-2025/aichallenge/workspace/src/aichallenge_submit/trajectory_follower_nobuakif/include/**",
+        "/home/nobuakif/aichallenge-2025/aichallenge/workspace/src/aichallenge_system/autoware_overlay_rviz_plugin/include/**",
+        "include/**",
+        "/usr/include/**"
+      ],
+      "name": "ros2",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++17"
+    }
+  ],
+  "version": 4
+}
