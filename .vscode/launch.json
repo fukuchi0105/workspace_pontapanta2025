@@ -1,111 +1,27 @@
+// .vscode/launch.json
 {
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Debug aichallenge_awsm_adapter",
+      "name": "Attach to Node",
       "type": "cppdbg",
-      "request": "launch",
-      "program": "${workspaceFolder}/install/aichallenge_awsm_adapter/lib/aichallenge_awsm_adapter/aichallenge_awsm_adapter",
-      "args": ["--ros-args", "__node:=aichallenge_awsm_adapter"],
-      "preLaunchTask": "colcon build",
-      "cwd": "${workspaceFolder}"
-    },
-    {
-      "name": "Debug goal_pose_setter",
-      "type": "cppdbg",
-      "request": "launch",
-      "program": "${workspaceFolder}/install/goal_pose_setter/lib/goal_pose_setter/goal_pose_setter",
-      "args": ["--ros-args", "__node:=goal_pose_setter"],
-      "preLaunchTask": "colcon build",
-      "cwd": "${workspaceFolder}"
-    },
-    {
-      "name": "Debug gyro_odometer",
-      "type": "cppdbg",
-      "request": "launch",
-      "program": "${workspaceFolder}/install/gyro_odometer/lib/gyro_odometer/gyro_odometer",
-      "args": ["--ros-args", "__node:=gyro_odometer"],
-      "preLaunchTask": "colcon build",
-      "cwd": "${workspaceFolder}"
-    },
-    {
-      "name": "Debug imu_corrector",
-      "type": "cppdbg",
-      "request": "launch",
-      "program": "${workspaceFolder}/install/imu_corrector/lib/imu_corrector/imu_corrector",
-      "args": ["--ros-args", "__node:=imu_corrector"],
-      "preLaunchTask": "colcon build",
-      "cwd": "${workspaceFolder}"
-    },
-    {
-      "name": "Debug imu_gnss_poser",
-      "type": "cppdbg",
-      "request": "launch",
-      "program": "${workspaceFolder}/install/imu_gnss_poser/lib/imu_gnss_poser/imu_gnss_poser",
-      "args": ["--ros-args", "__node:=imu_gnss_poser"],
-      "preLaunchTask": "colcon build",
-      "cwd": "${workspaceFolder}"
-    },
-    {
-      "name": "Debug path_to_trajectory",
-      "type": "cppdbg",
-      "request": "launch",
-      "program": "${workspaceFolder}/install/path_to_trajectory/lib/path_to_trajectory/path_to_trajectory",
-      "args": ["--ros-args", "__node:=path_to_trajectory"],
-      "preLaunchTask": "colcon build",
-      "cwd": "${workspaceFolder}"
-    },
-    {
-      "name": "Debug racing_kart_gnss_poser",
-      "type": "cppdbg",
-      "request": "launch",
-      "program": "${workspaceFolder}/install/racing_kart_gnss_poser/lib/racing_kart_gnss_poser/racing_kart_gnss_poser",
-      "args": ["--ros-args", "__node:=racing_kart_gnss_poser"],
-      "preLaunchTask": "colcon build",
-      "cwd": "${workspaceFolder}"
-    },
-    {
-      "name": "Debug simple_pure_pursuit",
-      "type": "cppdbg",
-      "request": "launch",
-      "program": "${workspaceFolder}/install/simple_pure_pursuit/lib/simple_pure_pursuit/simple_pure_pursuit",
-      "args": ["--ros-args", "__node:=simple_pure_pursuit"],
-      "preLaunchTask": "colcon build",
-      "cwd": "${workspaceFolder}"
-    },
-    {
-      "name": "Debug simple_trajectory_generator",
-      "type": "cppdbg",
-      "request": "launch",
-      "program": "${workspaceFolder}/install/simple_trajectory_generator/lib/simple_trajectory_generator/simple_trajectory_generator",
-      "args": ["--ros-args", "__node:=simple_trajectory_generator"],
-      "preLaunchTask": "colcon build",
-      "cwd": "${workspaceFolder}"
-    },
-    {
-      "name": "Debug trajectory_follower_nobuakif",
-      "type": "cppdbg",
-      "request": "launch",
-      "program": "${workspaceFolder}/install/trajectory_follower_nobuakif/lib/trajectory_follower_nobuakif/trajectory_follower_nobuakif",
-      "args": ["--ros-args", "__node:=trajectory_follower_nobuakif"],
-      "preLaunchTask": "colcon build",
-      "cwd": "${workspaceFolder}"
-    }
-  ],
-  "compounds": [
-    {
-      "name": "Debug All Nodes",
-      "configurations": [
-        "Debug aichallenge_awsm_adapter",
-        "Debug goal_pose_setter",
-        "Debug gyro_odometer",
-        "Debug imu_corrector",
-        "Debug imu_gnss_poser",
-        "Debug path_to_trajectory",
-        "Debug racing_kart_gnss_poser",
-        "Debug simple_pure_pursuit",
-        "Debug simple_trajectory_generator",
-        "Debug trajectory_follower_nobuakif"
+      "request": "attach",
+      "processId": "${command:pickProcess}",
+      "program": "${workspaceFolder}/install/trajectory_follower_nobuakif/lib/trajectory_follower_nobuakif/simple_pure_pursuit",
+      "cwd": "${workspaceFolder}",
+      "MIMode": "gdb",
+      "miDebuggerPath": "/usr/bin/gdb", 
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        },
+        {
+          "description": "Use Intel syntax",
+          "text": "-gdb-set disassembly-flavor intel",
+          "ignoreFailures": true
+        }
       ]
     }
   ]
