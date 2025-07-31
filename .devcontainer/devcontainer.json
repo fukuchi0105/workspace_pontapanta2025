@@ -1,0 +1,16 @@
+{
+  "name": "Autoware Dev Container",
+  "build": {
+    "dockerfile": "../../../Dockerfile"
+  },
+  "extensions": [
+    "ms-vscode.cpptools",      // C/C++ IntelliSense & デバッグ :contentReference[oaicite:9]{index=9}
+    "ms-python.python",        // Python サポート
+    "ms-vscode.cmake-tools",   // CMake ツール
+    "ranch-hand-robotics.rde-pack"        // ROS 拡張
+  ],
+  "settings": {
+    "terminal.integrated.shell.linux": "/bin/bash"
+  }
+}
+

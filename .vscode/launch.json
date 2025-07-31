@@ -1,28 +1,71 @@
-// .vscode/launch.json
+// // .vscode/launch.json
+// {
+//   "version": "0.2.0",
+//   "configurations": [
+//     {
+//       "name": "ROS2: Attach",
+//       "type": "ros2",
+//       "request": "attach",
+//       "preLaunchTask": "build-debug"
+//     }
+//   ]
+// }
+// {
+//   "version": "0.2.0",
+//   "configurations": [
+//     {
+//       "name": "ROS2: Debug run_evaluation",
+//       "type": "ros2",
+//       "request": "debug_launch",
+//       "target": "${workspaceFolder}/src/aichallenge_submit/aichallenge_submit_launch/launch/run_evaluation_wrapper.launch.py",
+//       "envFile": "${workspaceFolder}/local_humble_ws.env",
+//       "args": []
+//     }
+//   ]
+// }
 {
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Attach to Node",
+      "name": "Debug TrajectoryFollower Node",
       "type": "cppdbg",
-      "request": "attach",
-      "processId": "${command:pickProcess}",
-      "program": "${workspaceFolder}/install/trajectory_follower_nobuakif/lib/trajectory_follower_nobuakif/simple_pure_pursuit",
+      "request": "launch",
+      "program": "${workspaceFolder}/install/trajectory_follower_nobuakif/lib/trajectory_follower_nobuakif/trajectory_follower_nobuakif",
+      "args": [
+        "--ros-args",
+        "-r", "__node:=trajectory_follower_nobuakif_node",
+        "-p", "use_external_target_vel:=false",
+        "-p", "external_target_vel:=10.0",
+        "-p", "lookahead_gain:=0.5",
+        "-p", "lookahead_min_distance:=3.5",
+        "-p", "speed_proportional_gain:=1.0",
+        "-p", "steering_tire_angle_gain:=1.0",
+        "--remap", "input/kinematics:=/localization/kinematic_state",
+        "--remap", "input/trajectory:=/planning/scenario_planning/trajectory",
+        "--remap", "output/control_cmd:=/control/command/control_cmd"
+      ],
       "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
       "MIMode": "gdb",
-      "miDebuggerPath": "/usr/bin/gdb", 
+      "miDebuggerPath": "/usr/bin/gdb",
       "setupCommands": [
         {
           "description": "Enable pretty-printing for gdb",
           "text": "-enable-pretty-printing",
           "ignoreFailures": true
-        },
-        {
-          "description": "Use Intel syntax",
-          "text": "-gdb-set disassembly-flavor intel",
-          "ignoreFailures": true
         }
-      ]
+      ],
+      "preLaunchTask": "Build trajectory_follower_nobuakif"
     }
   ]
 }
+// {
+//   "name": "Attach to ROS2 via gdbserver",
+//   "type": "cppdbg",
+//   "request": "attach",
+//   "program": "/aichallenge/workspace/install/trajectory_follower_nobuakif/lib/trajectory_follower_nobuakif/trajectory_follower_nobuakif",
+//   "miDebuggerServerAddress": "localhost:3000",
+//   "cwd": "${workspaceFolder}",
+//   "MIMode": "gdb"
+// }

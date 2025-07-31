@@ -1,0 +1,6 @@
+// devcontainer.json
+{
+  "name": "ROS2 Humble DevContainer",
+  "build": { /* 略 */ },
+  "forwardPorts": [55351]       // debugpy がリッスンするポート
+}

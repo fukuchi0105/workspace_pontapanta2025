@@ -32,7 +32,8 @@ class TrajectoryFollower : public rclcpp::Node {
   // publishers
   rclcpp::Publisher<AckermannControlCommand>::SharedPtr pub_cmd_;
   rclcpp::Publisher<AckermannControlCommand>::SharedPtr pub_raw_cmd_;
-  rclcpp::Publisher<PointStamped>::SharedPtr pub_lookahead_point_;  
+  rclcpp::Publisher<PointStamped>::SharedPtr pub_lookahead_point_;
+  rclcpp::Publisher<PointStamped>::SharedPtr pub_debug_pt_; // publisher for debug point
 
   // timer
   rclcpp::TimerBase::SharedPtr timer_;
@@ -41,16 +42,28 @@ class TrajectoryFollower : public rclcpp::Node {
   Trajectory::SharedPtr trajectory_;
   Odometry::SharedPtr odometry_;
 
-
-
-  // pure pursuit parameters
+  // stanley control parameters
+  const int vehicle_model_; // 0 = Kinematic, 1 = Dynamic
+  const double position_gain_forward_;
+  const double position_gain_reverse_;
+  const double yaw_rate_feedback_gain_;
+  const double steering_feedback_gain_;
   const double wheel_base_;
-  const double lookahead_gain_;
-  const double lookahead_min_distance_;
+  const double lf_; // distance from center to front axle
+  const double lr_; // distance from center to rear axle
+  const double vehicle_mass_; // vehicle mass
+  const double front_corner_stiffness_; // front tire corner stiffness
+  const double max_steering_angle_deg_; // maximum steering angle in degrees
   const double speed_proportional_gain_;
   const bool use_external_target_vel_;
   const double external_target_vel_;
-  const double steering_tire_angle_gain_;
+
+  double prev_delta_; // previous steering angle
+  // // pure pursuit parameters
+  // const double lookahead_distance_;
+  // const double lookahead_gain_;
+  // const double lookahead_min_distance_;
+  // const double steering_tire_angle_gain_;
 
 
  private:

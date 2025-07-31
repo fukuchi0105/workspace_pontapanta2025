@@ -2,9 +2,7 @@
 
 #include <motion_utils/motion_utils.hpp>
 #include <tier4_autoware_utils/tier4_autoware_utils.hpp>
-
 #include <tf2/utils.h>
-
 #include <algorithm>
 
 namespace trajectory_follower_nobuakif
@@ -16,30 +14,51 @@ using tier4_autoware_utils::calcYawDeviation;
 
 TrajectoryFollower::TrajectoryFollower()
 : Node("trajectory_follower_nobuakif"),
-  // initialize parameters
-  wheel_base_(declare_parameter<float>("wheel_base", 2.14)),
-  lookahead_gain_(declare_parameter<float>("lookahead_gain", 1.0)),
-  lookahead_min_distance_(declare_parameter<float>("lookahead_min_distance", 1.0)),
-  speed_proportional_gain_(declare_parameter<float>("speed_proportional_gain", 1.0)),
+  // --- Parameter declarations ---
+  // Vehicle model type: 0 = Kinematic, 1 = Dynamic
+  vehicle_model_(declare_parameter<int>("vehicle_model", 0)),
+  // Position error gains for Stanley term
+  position_gain_forward_(declare_parameter<double>("position_gain_forward", 2.5)),
+  position_gain_reverse_(declare_parameter<double>("position_gain_reverse", 2.5)),
+  // Dynamic model feedback gains
+  yaw_rate_feedback_gain_(declare_parameter<double>("yaw_rate_feedback_gain", 2.5)),
+  steering_feedback_gain_(declare_parameter<double>("steering_feedback_gain", 2.5)),
+  // Vehicle geometry parameters
+  wheel_base_(declare_parameter<double>("wheelbase", 1.087)),                 // [m] wheelbase length
+  lf_(declare_parameter<double>("dist_cm_to_front_axle", 0.54)),           // [m] center to front axle
+  lr_(declare_parameter<double>("dist_cm_to_rear_axle", 0.54)),            // [m] center to rear axle
+  // Dynamic bicycle parameters
+  vehicle_mass_(declare_parameter<double>("vehicle_mass", 160.0)),       // [kg] vehicle mass
+  front_corner_stiffness_(declare_parameter<double>("front_tire_corner_stiffness", 19000.0)), // [N/rad]
+  // Control limits
+  max_steering_angle_deg_(declare_parameter<double>("max_steering_angle_deg", 80.0)), // [deg]
+  // Speed controller gain
+  speed_proportional_gain_(declare_parameter<double>("speed_proportional_gain", 1.0)),
+  // External speed option
   use_external_target_vel_(declare_parameter<bool>("use_external_target_vel", false)),
-  external_target_vel_(declare_parameter<float>("external_target_vel", 0.0)),
-  steering_tire_angle_gain_(declare_parameter<float>("steering_tire_angle_gain", 1.0))
+  external_target_vel_(declare_parameter<double>("external_target_vel", 0.0)),
+  prev_delta_(0.0) // Initialize previous steering angle
 {
+  // Publishers
   pub_cmd_ = create_publisher<AckermannControlCommand>("output/control_cmd", 1);
   pub_raw_cmd_ = create_publisher<AckermannControlCommand>("output/raw_control_cmd", 1);
-  pub_lookahead_point_ = create_publisher<PointStamped>("/control/debug/lookahead_point", 1);
+  // pub_debug_pt_ = create_publisher<PointStamped>("/control/debug/stanley_point", 1);
+  pub_debug_pt_ = create_publisher<PointStamped>("/control/debug/lookahead_point", 1);
 
-  const auto bv_qos = rclcpp::QoS(rclcpp::KeepLast(1)).durability_volatile().best_effort();
-  sub_kinematics_ = create_subscription<Odometry>(
-    "input/kinematics", bv_qos, [this](const Odometry::SharedPtr msg) { odometry_ = msg; });
-  sub_trajectory_ = create_subscription<Trajectory>(
-    "input/trajectory", bv_qos, [this](const Trajectory::SharedPtr msg) { trajectory_ = msg; });
+  // Subscriptions
+  const auto qos = rclcpp::QoS(rclcpp::KeepLast(1)).durability_volatile().best_effort();
+  sub_kinematics_ = create_subscription<Odometry>("input/kinematics", qos,
+    [this](const Odometry::SharedPtr msg) { odometry_ = msg; });
+  sub_trajectory_ = create_subscription<Trajectory>("input/trajectory", qos,
+    [this](const Trajectory::SharedPtr msg) { trajectory_ = msg; });
 
-  using namespace std::literals::chrono_literals;
-  timer_ =
-    rclcpp::create_timer(this, get_clock(), 10ms, std::bind(&TrajectoryFollower::onTimer, this));
+  // Timer for control loop (100 Hz)
+  timer_ = rclcpp::create_timer(
+    this, get_clock(), std::chrono::milliseconds(10),
+    std::bind(&TrajectoryFollower::onTimer, this));
 }
 
+// Helper: produce zeroed Ackermann command
 AckermannControlCommand zeroAckermannControlCommand(rclcpp::Time stamp)
 {
   AckermannControlCommand cmd;
@@ -54,95 +73,128 @@ AckermannControlCommand zeroAckermannControlCommand(rclcpp::Time stamp)
 
 void TrajectoryFollower::onTimer()
 {
-  // check data
-  if (!subscribeMessageAvailable()) {
+  // Check input availability
+  if (!subscribeMessageAvailable()) return;
+
+  // 1) Find nearest trajectory point index
+  size_t idx = findNearestIndex(trajectory_->points, odometry_->pose.pose.position);
+
+  // 2) Initialize zero command
+  AckermannControlCommand cmd = zeroAckermannControlCommand(get_clock()->now());
+
+  // 3) If at end of path, stop vehicle
+  if (idx >= trajectory_->points.size() - 1 || trajectory_->points.size() <= 2) {
+    cmd.longitudinal.speed = 0.0;
+    cmd.longitudinal.acceleration = -10.0;
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000, "Reached goal. Stopping.");
+    pub_cmd_->publish(cmd);
+    pub_raw_cmd_->publish(cmd);
     return;
   }
 
-  size_t closet_traj_point_idx =
-    findNearestIndex(trajectory_->points, odometry_->pose.pose.position);
+  // 4) Retrieve reference point and current speed
+  const auto &ref_pt = trajectory_->points[idx];
+  double v_nominal = use_external_target_vel_ ? external_target_vel_ : ref_pt.longitudinal_velocity_mps;
+  double v_current = odometry_->twist.twist.linear.x;
 
-  // publish zero command
-  AckermannControlCommand cmd = zeroAckermannControlCommand(get_clock()->now());
+  // --- Longitudinal control (speed) ---
+  // English: simple P control on speed
+  // 日本語: 速度 P 制御
+  cmd.longitudinal.speed = v_nominal;
+  cmd.longitudinal.acceleration = speed_proportional_gain_ * (v_nominal - v_current);
 
-  if (
-    (closet_traj_point_idx == trajectory_->points.size() - 1) ||
-    (trajectory_->points.size() <= 2)) {
-    cmd.longitudinal.speed = 0.0;
-    cmd.longitudinal.acceleration = -10.0;
-    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000 /*ms*/, "reached to the goal");
-  } else {
-    // get closest trajectory point from current position
-    TrajectoryPoint closet_traj_point = trajectory_->points.at(closet_traj_point_idx);
+  // --- Compute common errors for Stanley ---
+  // English: lateral deviation (cross-track error)
+  // 日本語: 横ずれ誤差 (クロストラック誤差)
+  double cte = calcLateralDeviation(odometry_->pose.pose, ref_pt.pose.position);
+  // English: heading error between vehicle and path tangent
+  // 日本語: 車体向きと経路接線の誤差 (ヘディング誤差)
+  double heading_err = calcYawDeviation(odometry_->pose.pose, ref_pt.pose);
 
-    // calc longitudinal speed and acceleration
-    double target_longitudinal_vel =
-      use_external_target_vel_ ? external_target_vel_ : closet_traj_point.longitudinal_velocity_mps;
-    double current_longitudinal_vel = odometry_->twist.twist.linear.x;
+  // Prevent division by zero
+  double v_stanley = std::max(v_current, 0.0) + 1e-3;
 
-    cmd.longitudinal.speed = target_longitudinal_vel;
-    cmd.longitudinal.acceleration =
-      speed_proportional_gain_ * (target_longitudinal_vel - current_longitudinal_vel);
+  // --- Kinematic Stanley term ---
+  // English: choose forward/reverse gain based on direction
+  // 日本語: 進行方向に応じたゲイン選択
+  double k_pos = (v_current >= 0 ? position_gain_forward_ : position_gain_reverse_);
+  // English: stanley term = atan(k_pos * cte / v)
+  // 日本語: Stanley 項 = atan(k_pos × 横ずれ / 速度)
+  double stanley_term = std::atan2(k_pos * cte, v_stanley);
 
-    // calc lateral control
-    //// calc lookahead distance
-    double lookahead_distance = lookahead_gain_ * target_longitudinal_vel + lookahead_min_distance_;
-    //// calc center coordinate of rear wheel
-    double rear_x = odometry_->pose.pose.position.x -
-                    wheel_base_ / 2.0 * std::cos(odometry_->pose.pose.orientation.z);
-    double rear_y = odometry_->pose.pose.position.y -
-                    wheel_base_ / 2.0 * std::sin(odometry_->pose.pose.orientation.z);
-    //// search lookahead point
-    auto lookahead_point_itr = std::find_if(
-      trajectory_->points.begin() + closet_traj_point_idx, trajectory_->points.end(),
-      [&](const TrajectoryPoint & point) {
-        return std::hypot(point.pose.position.x - rear_x, point.pose.position.y - rear_y) >=
-               lookahead_distance;
-      });
-    if (lookahead_point_itr == trajectory_->points.end()) {
-      lookahead_point_itr = trajectory_->points.end() - 1;
-    }
-    double lookahead_point_x = lookahead_point_itr->pose.position.x;
-    double lookahead_point_y = lookahead_point_itr->pose.position.y;
+  // Base steering command (kinematic)
+  // English: δ = heading error + stanley term
+  // 日本語: δ = ヘディング誤差 + Stanley 項
+  double delta = heading_err;// + stanley_term / 10;
+  // delta = -delta;
 
-    geometry_msgs::msg::PointStamped lookahead_point_msg;
-    lookahead_point_msg.header.stamp = get_clock()->now();
-    lookahead_point_msg.header.frame_id = "map";
-    lookahead_point_msg.point.x = lookahead_point_x;
-    lookahead_point_msg.point.y = lookahead_point_y;
-    lookahead_point_msg.point.z = closet_traj_point.pose.position.z;
-    pub_lookahead_point_->publish(lookahead_point_msg);
+  // --- Dynamic bicycle enhancements ---
+  if (vehicle_model_ == 1) {
+    // English: add yaw-rate feedback
+    // 日本語: ヨーレートフィードバックを追加
+    double psi_dot = odometry_->twist.twist.angular.z;
+    delta += yaw_rate_feedback_gain_ * psi_dot;
 
-    // calc steering angle for lateral control
-    double alpha = std::atan2(lookahead_point_y - rear_y, lookahead_point_x - rear_x) -
-                   tf2::getYaw(odometry_->pose.pose.orientation);
-    cmd.lateral.steering_tire_angle =
-      steering_tire_angle_gain_ * std::atan2(2.0 * wheel_base_ * std::sin(alpha), lookahead_distance);
+    // English: add steering-angle feedback (prev - curr)
+    // 日本語: ステア角フィードバック (前回コマンド - 現在角)
+    double curr_steer = cmd.lateral.steering_tire_angle; // assume available sensor or last cmd
+    delta += steering_feedback_gain_ * (prev_delta_ - curr_steer);
+
+    // // English: optional feedforward from path curvature
+    // // 日本語: 経路曲率によるフィードフォワード
+    // if (ref_pt.curvature != 0.0) {
+    //   double ff = std::atan(wheel_base_ * ref_pt.curvature);
+    //   delta += ff;
+    // }
   }
+  RCLCPP_INFO(get_logger(), "CTE: %.3f, Heading Error: %.3f, Speed: %.2f\n",
+        cte, heading_err, v_current);
+
+  RCLCPP_INFO(get_logger(), "Stanley Term: %.3f, heading err: %.3f, tire angle: %.3f\n",
+        stanley_term, heading_err, delta);
+
+  // --- Saturate steering to actuator limits ---
+  // English: clamp between ±max angle
+  // 日本語: ±最大舵角で制限
+  double max_rad = max_steering_angle_deg_ * M_PI / 180.0;
+  delta = std::clamp(delta, -max_rad, max_rad);
+  prev_delta_ = delta;
+
+  // 5) Publish lateral command
+  cmd.lateral.steering_tire_angle = delta;
   pub_cmd_->publish(cmd);
-  cmd.lateral.steering_tire_angle /=  steering_tire_angle_gain_;
+
+  // 6) Publish raw command (undo any gain scaling)
   pub_raw_cmd_->publish(cmd);
+
+  // 7) Debug: publish the reference point being tracked
+  PointStamped dbg;
+  dbg.header.stamp = get_clock()->now();
+  dbg.header.frame_id = "map";
+  dbg.point = ref_pt.pose.position;
+  pub_debug_pt_->publish(dbg);
 }
 
 bool TrajectoryFollower::subscribeMessageAvailable()
 {
   if (!odometry_) {
-    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000 /*ms*/, "odometry is not available");
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000, "Odometry not available.");
     return false;
   }
   if (!trajectory_) {
-    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000 /*ms*/, "trajectory is not available");
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000, "Trajectory not available.");
     return false;
   }
   if (trajectory_->points.empty()) {
-      RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000 /*ms*/,  "trajectory points is empty");
-      return false;
-    }
+    RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000, "Trajectory is empty.");
+    return false;
+  }
   return true;
 }
-}  // namespace trajectory_follower_nobuakif
 
-int main(int argc, char const * argv[])
+} // namespace trajectory_follower_nobuakif
+
+int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
   rclcpp::spin(std::make_shared<trajectory_follower_nobuakif::TrajectoryFollower>());
