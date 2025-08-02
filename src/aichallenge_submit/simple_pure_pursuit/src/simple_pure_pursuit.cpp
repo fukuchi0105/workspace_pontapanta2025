@@ -7,6 +7,12 @@
 
 #include <algorithm>
 
+/*
+[概要]
+・幾何学ベースでの制御ロジック(前輪の操舵角と加減速コマンドを決定)
+・速度が高いほど遠い目標点を設定
+*/
+
 namespace simple_pure_pursuit
 {
 
@@ -14,32 +20,38 @@ using motion_utils::findNearestIndex;
 using tier4_autoware_utils::calcLateralDeviation;
 using tier4_autoware_utils::calcYawDeviation;
 
+// コンストラクタ
+// ROSノードとして初期化
 SimplePurePursuit::SimplePurePursuit()
 : Node("simple_pure_pursuit"),
   // initialize parameters
-  wheel_base_(declare_parameter<float>("wheel_base", 2.14)),
-  lookahead_gain_(declare_parameter<float>("lookahead_gain", 1.0)),
-  lookahead_min_distance_(declare_parameter<float>("lookahead_min_distance", 1.0)),
-  speed_proportional_gain_(declare_parameter<float>("speed_proportional_gain", 1.0)),
-  use_external_target_vel_(declare_parameter<bool>("use_external_target_vel", false)),
-  external_target_vel_(declare_parameter<float>("external_target_vel", 0.0)),
-  steering_tire_angle_gain_(declare_parameter<float>("steering_tire_angle_gain", 1.0))
+  wheel_base_(declare_parameter<float>("wheel_base", 2.14)),  // 車両ホイールベース
+  lookahead_gain_(declare_parameter<float>("lookahead_gain", 1.0)), // 速度依存の先行距離ゲイン
+  lookahead_min_distance_(declare_parameter<float>("lookahead_min_distance", 1.0)), // 最小先行距離
+  speed_proportional_gain_(declare_parameter<float>("speed_proportional_gain", 1.0)), // 速度制御の比例ゲイン
+  use_external_target_vel_(declare_parameter<bool>("use_external_target_vel", false)),  // 外部速度を使用するか
+  external_target_vel_(declare_parameter<float>("external_target_vel", 0.0)), // 外部速度設定
+  steering_tire_angle_gain_(declare_parameter<float>("steering_tire_angle_gain", 1.0))  // 操舵角ゲイン
 {
-  pub_cmd_ = create_publisher<AckermannControlCommand>("output/control_cmd", 1);
-  pub_raw_cmd_ = create_publisher<AckermannControlCommand>("output/raw_control_cmd", 1);
-  pub_lookahead_point_ = create_publisher<PointStamped>("/control/debug/lookahead_point", 1);
+  // Publisherの設定
+  pub_cmd_ = create_publisher<AckermannControlCommand>("output/control_cmd", 1);  // 制御用Ackermannコマンド
+  pub_raw_cmd_ = create_publisher<AckermannControlCommand>("output/raw_control_cmd", 1);  // 生のAckermannコマンド
+  pub_lookahead_point_ = create_publisher<PointStamped>("/control/debug/lookahead_point", 1); // デバッグ用の先行点可視化
 
+  // Subscriberの設定
   const auto bv_qos = rclcpp::QoS(rclcpp::KeepLast(1)).durability_volatile().best_effort();
   sub_kinematics_ = create_subscription<Odometry>(
-    "input/kinematics", bv_qos, [this](const Odometry::SharedPtr msg) { odometry_ = msg; });
+    "input/kinematics", bv_qos, [this](const Odometry::SharedPtr msg) { odometry_ = msg; });  // Odometry購読
   sub_trajectory_ = create_subscription<Trajectory>(
-    "input/trajectory", bv_qos, [this](const Trajectory::SharedPtr msg) { trajectory_ = msg; });
+    "input/trajectory", bv_qos, [this](const Trajectory::SharedPtr msg) { trajectory_ = msg; });  // Trajectory購読
 
+  // 10msタイマー周期動作関数
   using namespace std::literals::chrono_literals;
   timer_ =
     rclcpp::create_timer(this, get_clock(), 10ms, std::bind(&SimplePurePursuit::onTimer, this));
 }
 
+// 完全停止コマンドを生成する関数 (初期化、ゴール到着時に動作)
 AckermannControlCommand zeroAckermannControlCommand(rclcpp::Time stamp)
 {
   AckermannControlCommand cmd;
@@ -52,6 +64,7 @@ AckermannControlCommand zeroAckermannControlCommand(rclcpp::Time stamp)
   return cmd;
 }
 
+// メイン制御ループ (タイマー動作関数)
 void SimplePurePursuit::onTimer()
 {
   // check data
@@ -59,40 +72,56 @@ void SimplePurePursuit::onTimer()
     return;
   }
 
+  // 現在位置に最も近いTrajectoryのインデックスを取得
   size_t closet_traj_point_idx =
     findNearestIndex(trajectory_->points, odometry_->pose.pose.position);
 
   // publish zero command
   AckermannControlCommand cmd = zeroAckermannControlCommand(get_clock()->now());
-
+  ///////////////////////////////////////////////////////////////////////////////////////////////////
+  // 目標速度・加速度の計算
+  ///////////////////////////////////////////////////////////////////////////////////////////////////
+  // ゴール判定 (最後のポイントに到達 or ポイントのサイズが2以下)
   if (
     (closet_traj_point_idx == trajectory_->points.size() - 1) ||
     (trajectory_->points.size() <= 2)) {
     cmd.longitudinal.speed = 0.0;
     cmd.longitudinal.acceleration = -10.0;
     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000 /*ms*/, "reached to the goal");
+
+  // ゴールでなければ、制御動作
   } else {
-    // get closest trajectory point from current position
+    // 最近点の目標値を取得
     TrajectoryPoint closet_traj_point = trajectory_->points.at(closet_traj_point_idx);
 
-    // calc longitudinal speed and acceleration
-    double target_longitudinal_vel =
-      use_external_target_vel_ ? external_target_vel_ : closet_traj_point.longitudinal_velocity_mps;
+    // 目標速度値の計算 (外部設定値 or Trajectoryの設定値)
+    double target_longitudinal_vel;
+    if (use_external_target_vel_) {
+      target_longitudinal_vel = external_target_vel_;
+    } else {
+      target_longitudinal_vel = closet_traj_point.longitudinal_velocity_mps;
+    }
     double current_longitudinal_vel = odometry_->twist.twist.linear.x;
 
+    // 目標加速度の計算 (目標速度 - 現在速度) × ゲイン
     cmd.longitudinal.speed = target_longitudinal_vel;
     cmd.longitudinal.acceleration =
       speed_proportional_gain_ * (target_longitudinal_vel - current_longitudinal_vel);
 
-    // calc lateral control
-    //// calc lookahead distance
+    ///////////////////////////////////////////////////////////////////////////////////////////////////
+    // 操舵量の計算
+    ///////////////////////////////////////////////////////////////////////////////////////////////////
+
+    // 先行距離の計算
     double lookahead_distance = lookahead_gain_ * target_longitudinal_vel + lookahead_min_distance_;
-    //// calc center coordinate of rear wheel
+
+    // リアの車軸中心座標を計算
     double rear_x = odometry_->pose.pose.position.x -
                     wheel_base_ / 2.0 * std::cos(odometry_->pose.pose.orientation.z);
     double rear_y = odometry_->pose.pose.position.y -
                     wheel_base_ / 2.0 * std::sin(odometry_->pose.pose.orientation.z);
-    //// search lookahead point
+
+    // 先行距離以上のTrajectoryポイントを探索 (見つからなければ、最終点を使用)
     auto lookahead_point_itr = std::find_if(
       trajectory_->points.begin() + closet_traj_point_idx, trajectory_->points.end(),
       [&](const TrajectoryPoint & point) {
@@ -105,6 +134,7 @@ void SimplePurePursuit::onTimer()
     double lookahead_point_x = lookahead_point_itr->pose.position.x;
     double lookahead_point_y = lookahead_point_itr->pose.position.y;
 
+    // デバッグ用出力
     geometry_msgs::msg::PointStamped lookahead_point_msg;
     lookahead_point_msg.header.stamp = get_clock()->now();
     lookahead_point_msg.header.frame_id = "map";
@@ -113,17 +143,20 @@ void SimplePurePursuit::onTimer()
     lookahead_point_msg.point.z = closet_traj_point.pose.position.z;
     pub_lookahead_point_->publish(lookahead_point_msg);
 
-    // calc steering angle for lateral control
+    // 操舵角の計算
     double alpha = std::atan2(lookahead_point_y - rear_y, lookahead_point_x - rear_x) -
                    tf2::getYaw(odometry_->pose.pose.orientation);
     cmd.lateral.steering_tire_angle =
       steering_tire_angle_gain_ * std::atan2(2.0 * wheel_base_ * std::sin(alpha), lookahead_distance);
   }
+
+  // 結果の出力
   pub_cmd_->publish(cmd);
   cmd.lateral.steering_tire_angle /=  steering_tire_angle_gain_;
   pub_raw_cmd_->publish(cmd);
 }
 
+// Odometry、Trajectoryのデータ有無を確認
 bool SimplePurePursuit::subscribeMessageAvailable()
 {
   if (!odometry_) {
@@ -142,6 +175,7 @@ bool SimplePurePursuit::subscribeMessageAvailable()
 }
 }  // namespace simple_pure_pursuit
 
+// ROS2 エンドポイント。 ノードを起動して待機
 int main(int argc, char const * argv[])
 {
   rclcpp::init(argc, argv);
