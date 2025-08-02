@@ -4,7 +4,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+//         http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -12,122 +12,145 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+/*
+[概要]
+IMUセンサから取得した角速度・加速度・姿勢情報を補正し、指定されたbase_linkフレームに変換して出力する
+
+[入力]
+sensor_msgs::msg::Imu (IMU生データ → 角速度、加速度、クォータニオン（姿勢）)
+
+[出力]
+sensor_msgs::msg::Imu (補正済みIMUデータ → 座標変換後の角速度、加速度、姿勢、共分散行列)
+*/
+
 #include "imu_corrector/imu_corrector_core.hpp"
 
+// 共分散行列を最大値で正規化し、対角成分に設定する
 std::array<double, 9> transformCovariance(const std::array<double, 9> & cov)
 {
-  using COV_IDX = tier4_autoware_utils::xyz_covariance_index::XYZ_COV_IDX;
+    using COV_IDX = tier4_autoware_utils::xyz_covariance_index::XYZ_COV_IDX;
 
-  double max_cov = 0.0;
-  max_cov = std::max(max_cov, cov[COV_IDX::X_X]);
-  max_cov = std::max(max_cov, cov[COV_IDX::Y_Y]);
-  max_cov = std::max(max_cov, cov[COV_IDX::Z_Z]);
+    double max_cov = 0.0;
+    max_cov = std::max(max_cov, cov[COV_IDX::X_X]);
+    max_cov = std::max(max_cov, cov[COV_IDX::Y_Y]);
+    max_cov = std::max(max_cov, cov[COV_IDX::Z_Z]);
 
-  std::array<double, 9> cov_transformed;
-  cov_transformed.fill(0.);
-  cov_transformed[COV_IDX::X_X] = max_cov;
-  cov_transformed[COV_IDX::Y_Y] = max_cov;
-  cov_transformed[COV_IDX::Z_Z] = max_cov;
-  return cov_transformed;
+    std::array<double, 9> cov_transformed;
+    cov_transformed.fill(0.);
+    cov_transformed[COV_IDX::X_X] = max_cov;
+    cov_transformed[COV_IDX::Y_Y] = max_cov;
+    cov_transformed[COV_IDX::Z_Z] = max_cov;
+    return cov_transformed;
 }
 
+// Vector3型データをTF(Transform)で座標変換
 geometry_msgs::msg::Vector3 transformVector3(
-  const geometry_msgs::msg::Vector3 & vec, const geometry_msgs::msg::TransformStamped & transform)
+    const geometry_msgs::msg::Vector3 & vec, const geometry_msgs::msg::TransformStamped & transform)
 {
-  geometry_msgs::msg::Vector3Stamped vec_stamped;
-  vec_stamped.vector = vec;
+    geometry_msgs::msg::Vector3Stamped vec_stamped;
+    vec_stamped.vector = vec;
 
-  geometry_msgs::msg::Vector3Stamped vec_stamped_transformed;
-  tf2::doTransform(vec_stamped, vec_stamped_transformed, transform);
-  return vec_stamped_transformed.vector;
+    geometry_msgs::msg::Vector3Stamped vec_stamped_transformed;
+    tf2::doTransform(vec_stamped, vec_stamped_transformed, transform);
+    return vec_stamped_transformed.vector;
 }
 
+// Quaternion型データをTFで座標変換
 geometry_msgs::msg::Quaternion transformQuaternion(
-  const geometry_msgs::msg::Quaternion & quat, const geometry_msgs::msg::TransformStamped & transform)
+    const geometry_msgs::msg::Quaternion & quat, const geometry_msgs::msg::TransformStamped & transform)
 {
-  geometry_msgs::msg::QuaternionStamped quat_stamped;
-  quat_stamped.quaternion = quat;
+    geometry_msgs::msg::QuaternionStamped quat_stamped;
+    quat_stamped.quaternion = quat;
 
-  geometry_msgs::msg::QuaternionStamped quat_stamped_transformed;
-  tf2::doTransform(quat_stamped, quat_stamped_transformed, transform);
-  return quat_stamped_transformed.quaternion;
+    geometry_msgs::msg::QuaternionStamped quat_stamped_transformed;
+    tf2::doTransform(quat_stamped, quat_stamped_transformed, transform);
+    return quat_stamped_transformed.quaternion;
 }
 
 namespace imu_corrector
 {
+
+// IMUデータ補正ノード: オフセット補正、共分散設定、座標変換を行う
 ImuCorrector::ImuCorrector(const rclcpp::NodeOptions & node_options)
 : Node("imu_corrector", node_options),
-  output_frame_(declare_parameter<std::string>("base_link", "base_link"))
+    output_frame_(declare_parameter<std::string>("base_link", "base_link"))
 {
-  transform_listener_ = std::make_shared<tier4_autoware_utils::TransformListener>(this);
+    transform_listener_ = std::make_shared<tier4_autoware_utils::TransformListener>(this);
 
-  angular_velocity_offset_x_imu_link_ = declare_parameter<double>("angular_velocity_offset_x", 0.0);
-  angular_velocity_offset_y_imu_link_ = declare_parameter<double>("angular_velocity_offset_y", 0.0);
-  angular_velocity_offset_z_imu_link_ = declare_parameter<double>("angular_velocity_offset_z", 0.0);
+    // パラメータの取得
+    angular_velocity_offset_x_imu_link_ = declare_parameter<double>("angular_velocity_offset_x", 0.0);
+    angular_velocity_offset_y_imu_link_ = declare_parameter<double>("angular_velocity_offset_y", 0.0);
+    angular_velocity_offset_z_imu_link_ = declare_parameter<double>("angular_velocity_offset_z", 0.0);
 
-  angular_velocity_stddev_xx_imu_link_ =
-    declare_parameter<double>("angular_velocity_stddev_xx", 0.03);
-  angular_velocity_stddev_yy_imu_link_ =
-    declare_parameter<double>("angular_velocity_stddev_yy", 0.03);
-  angular_velocity_stddev_zz_imu_link_ =
-    declare_parameter<double>("angular_velocity_stddev_zz", 0.03);
+    angular_velocity_stddev_xx_imu_link_ =
+        declare_parameter<double>("angular_velocity_stddev_xx", 0.03);
+    angular_velocity_stddev_yy_imu_link_ =
+        declare_parameter<double>("angular_velocity_stddev_yy", 0.03);
+    angular_velocity_stddev_zz_imu_link_ =
+        declare_parameter<double>("angular_velocity_stddev_zz", 0.03);
 
-  accel_stddev_imu_link_ = declare_parameter<double>("acceleration_stddev", 10000.0);
+    accel_stddev_imu_link_ = declare_parameter<double>("acceleration_stddev", 10000.0);
 
-  auto rv_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().durability_volatile();
-  imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
-    "input", rv_qos, std::bind(&ImuCorrector::callbackImu, this, std::placeholders::_1));
+    // IMU入力の購読と補正後IMU出力設定
+    auto rv_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().durability_volatile();
+    imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
+        "input", rv_qos, std::bind(&ImuCorrector::callbackImu, this, std::placeholders::_1));
 
-  imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("output", rv_qos);
+    imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("output", rv_qos);
 }
 
+// IMU入力を補正し、座標変換後に出力する
 void ImuCorrector::callbackImu(const sensor_msgs::msg::Imu::ConstSharedPtr imu_msg_ptr)
 {
-  sensor_msgs::msg::Imu imu_msg;
-  imu_msg = *imu_msg_ptr;
+    sensor_msgs::msg::Imu imu_msg;
+    imu_msg = *imu_msg_ptr;
 
-  imu_msg.angular_velocity.x -= angular_velocity_offset_x_imu_link_;
-  imu_msg.angular_velocity.y -= angular_velocity_offset_y_imu_link_;
-  imu_msg.angular_velocity.z -= angular_velocity_offset_z_imu_link_;
+    // 角速度オフセットの補正
+    imu_msg.angular_velocity.x -= angular_velocity_offset_x_imu_link_;
+    imu_msg.angular_velocity.y -= angular_velocity_offset_y_imu_link_;
+    imu_msg.angular_velocity.z -= angular_velocity_offset_z_imu_link_;
 
-  imu_msg.angular_velocity_covariance[COV_IDX::X_X] =
-    angular_velocity_stddev_xx_imu_link_ * angular_velocity_stddev_xx_imu_link_;
-  imu_msg.angular_velocity_covariance[COV_IDX::Y_Y] =
-    angular_velocity_stddev_yy_imu_link_ * angular_velocity_stddev_yy_imu_link_;
-  imu_msg.angular_velocity_covariance[COV_IDX::Z_Z] =
-    angular_velocity_stddev_zz_imu_link_ * angular_velocity_stddev_zz_imu_link_;
-  imu_msg.linear_acceleration_covariance[COV_IDX::X_X] =
-    accel_stddev_imu_link_ * accel_stddev_imu_link_;
-  imu_msg.linear_acceleration_covariance[COV_IDX::Y_Y] =
-    accel_stddev_imu_link_ * accel_stddev_imu_link_;
-  imu_msg.linear_acceleration_covariance[COV_IDX::Z_Z] =
-    accel_stddev_imu_link_ * accel_stddev_imu_link_;
+    // 共分散に標準偏差を設定
+    imu_msg.angular_velocity_covariance[COV_IDX::X_X] =
+        angular_velocity_stddev_xx_imu_link_ * angular_velocity_stddev_xx_imu_link_;
+    imu_msg.angular_velocity_covariance[COV_IDX::Y_Y] =
+        angular_velocity_stddev_yy_imu_link_ * angular_velocity_stddev_yy_imu_link_;
+    imu_msg.angular_velocity_covariance[COV_IDX::Z_Z] =
+        angular_velocity_stddev_zz_imu_link_ * angular_velocity_stddev_zz_imu_link_;
+    imu_msg.linear_acceleration_covariance[COV_IDX::X_X] =
+        accel_stddev_imu_link_ * accel_stddev_imu_link_;
+    imu_msg.linear_acceleration_covariance[COV_IDX::Y_Y] =
+        accel_stddev_imu_link_ * accel_stddev_imu_link_;
+    imu_msg.linear_acceleration_covariance[COV_IDX::Z_Z] =
+        accel_stddev_imu_link_ * accel_stddev_imu_link_;
 
-  geometry_msgs::msg::TransformStamped::ConstSharedPtr tf_imu2base_ptr =
-    transform_listener_->getLatestTransform(imu_msg.header.frame_id, output_frame_);
-  if (!tf_imu2base_ptr) {
-    RCLCPP_ERROR_THROTTLE(
-      this->get_logger(), *this->get_clock(), 2000, "Please publish TF %s to %s", output_frame_.c_str(),
-    (imu_msg.header.frame_id).c_str());
-    return;
-  }
+    // TF取得と変換
+    geometry_msgs::msg::TransformStamped::ConstSharedPtr tf_imu2base_ptr =
+        transform_listener_->getLatestTransform(imu_msg.header.frame_id, output_frame_);
+    if (!tf_imu2base_ptr) {
+        RCLCPP_ERROR_THROTTLE(
+            this->get_logger(), *this->get_clock(), 2000, "Please publish TF %s to %s", output_frame_.c_str(),
+        (imu_msg.header.frame_id).c_str());
+        return;
+    }
 
-  sensor_msgs::msg::Imu imu_msg_base_link;
-  imu_msg_base_link.header.stamp = imu_msg_ptr->header.stamp;
-  imu_msg_base_link.header.frame_id = output_frame_;
-  imu_msg_base_link.orientation = transformQuaternion(imu_msg.orientation, *tf_imu2base_ptr); 
-  imu_msg_base_link.linear_acceleration =
-    transformVector3(imu_msg.linear_acceleration, *tf_imu2base_ptr);
-  imu_msg_base_link.linear_acceleration_covariance =
-    transformCovariance(imu_msg.linear_acceleration_covariance);
-  imu_msg_base_link.angular_velocity = transformVector3(imu_msg.angular_velocity, *tf_imu2base_ptr);
-  imu_msg_base_link.angular_velocity_covariance =
-    transformCovariance(imu_msg.angular_velocity_covariance);
+    // 座標変換後IMUメッセージの作成とPublish
+    sensor_msgs::msg::Imu imu_msg_base_link;
+    imu_msg_base_link.header.stamp = imu_msg_ptr->header.stamp;
+    imu_msg_base_link.header.frame_id = output_frame_;
+    imu_msg_base_link.orientation = transformQuaternion(imu_msg.orientation, *tf_imu2base_ptr); 
+    imu_msg_base_link.linear_acceleration =
+        transformVector3(imu_msg.linear_acceleration, *tf_imu2base_ptr);
+    imu_msg_base_link.linear_acceleration_covariance =
+        transformCovariance(imu_msg.linear_acceleration_covariance);
+    imu_msg_base_link.angular_velocity = transformVector3(imu_msg.angular_velocity, *tf_imu2base_ptr);
+    imu_msg_base_link.angular_velocity_covariance =
+        transformCovariance(imu_msg.angular_velocity_covariance);
 
-  imu_pub_->publish(imu_msg_base_link);
+    imu_pub_->publish(imu_msg_base_link);
 }
 
-}  // namespace imu_corrector
+}    // namespace imu_corrector
 
 #include <rclcpp_components/register_node_macro.hpp>
 RCLCPP_COMPONENTS_REGISTER_NODE(imu_corrector::ImuCorrector)
