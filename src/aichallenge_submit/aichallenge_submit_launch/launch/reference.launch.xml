@@ -118,7 +118,7 @@
 
       <!-- Customizable -->
       <node pkg="simple_trajectory_generator" exec="simple_trajectory_generator_node" name="simple_trajectory_generator" output="screen">
-            <param name="csv_path" value="$(find-pkg-share simple_trajectory_generator)/data/raceline_awsim_15km.csv"/>
+            <param name="csv_path" value="$(find-pkg-share simple_trajectory_generator)/data/raceline_konada_edit_0.1m.csv"/>
             <param name="z" value="6.5"/>
       </node>
       
@@ -132,15 +132,26 @@
   <node pkg="simple_pure_pursuit" exec="simple_pure_pursuit" name="simple_pure_pursuit_node" output="screen">
     <param name="use_external_target_vel" value="false"/>
     <param name="external_target_vel" value="10.0"/>
-    <param name="lookahead_gain" value="0.5"/>
+    <param name="lookahead_gain" value="0.25"/>
     <param name="lookahead_min_distance" value="3.5"/>
     <param name="speed_proportional_gain" value="1.0"/>
-    <param name="steering_tire_angle_gain" value="$(var steering_tire_angle_gain_var)"/>
+    <!-- <param name="steering_tire_angle_gain" value="$(var steering_tire_angle_gain_var)"/> -->
+    <param name="steering_tire_angle_gain" value="1.5"/>
 
     <remap from="input/kinematics" to="/localization/kinematic_state"/>
     <remap from="input/trajectory" to="/planning/scenario_planning/trajectory"/>
     <remap from="output/control_cmd" to="/control/command/control_cmd"/>
   </node>
+
+  <!-- editor_tool_serverノードの追加 -->
+  <!-- <node pkg="editor_tool_server" exec="interactive_server" output="screen" name="editor_tool_server">
+    <param name="csv_file_path" value="/aichallenge/workspace/src/aichallenge-trajectory-editor/csv/centerline_15km.csv"/>
+    <param name="publish_on_initialize" value="true"/>
+    <param name="wait_seconds" value="5.0"/>
+    <param name="grad_min_speed" value="0.0"/>
+    <param name="grad_mid_speed" value="20.0"/>
+    <param name="grad_max_speed" value="40.0"/>
+</node> -->
 
   <!-- Map -->
   <group>
