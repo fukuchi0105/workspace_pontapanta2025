@@ -10,6 +10,7 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <optional>
 #include <rclcpp/rclcpp.hpp>
+#include "std_msgs/msg/float64.hpp"
 
 namespace simple_pure_pursuit {
 
@@ -33,6 +34,7 @@ class SimplePurePursuit : public rclcpp::Node {
   rclcpp::Publisher<AckermannControlCommand>::SharedPtr pub_cmd_;
   rclcpp::Publisher<AckermannControlCommand>::SharedPtr pub_raw_cmd_;
   rclcpp::Publisher<PointStamped>::SharedPtr pub_lookahead_point_;  
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_debug_controller_;  
 
   // timer
   rclcpp::TimerBase::SharedPtr timer_;
