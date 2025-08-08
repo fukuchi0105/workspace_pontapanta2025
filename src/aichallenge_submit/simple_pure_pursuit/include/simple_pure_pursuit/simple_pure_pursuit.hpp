@@ -34,7 +34,22 @@ class SimplePurePursuit : public rclcpp::Node {
   rclcpp::Publisher<AckermannControlCommand>::SharedPtr pub_cmd_;
   rclcpp::Publisher<AckermannControlCommand>::SharedPtr pub_raw_cmd_;
   rclcpp::Publisher<PointStamped>::SharedPtr pub_lookahead_point_;  
+
   rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_debug_controller_;  
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_debug_msg_cmd_steer_out_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_debug_msg_cmd_steer_pure_pursuit_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_debug_msg_cmd_steer_stanley_e_cte_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_debug_msg_cmd_steer_stanley_e_heading_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_debug_msg_cmd_steer_stanley_steer_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_debug_msg_cmd_steer_pid_output_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_debug_msg_cmd_steer_pid_kp_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_debug_msg_cmd_steer_pid_ki_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_debug_msg_cmd_steer_pid_kd_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_debug_msg_cmd_data1_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_debug_msg_cmd_data2_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_debug_msg_cmd_data3_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_debug_msg_cmd_data4_;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_debug_msg_cmd_data5_;
 
   // timer
   rclcpp::TimerBase::SharedPtr timer_;

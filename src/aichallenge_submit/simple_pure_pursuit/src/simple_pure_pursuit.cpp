@@ -41,7 +41,22 @@ SimplePurePursuit::SimplePurePursuit()
     pub_cmd_ = create_publisher<AckermannControlCommand>("output/control_cmd", 1);    // 制御用Ackermannコマンド
     pub_raw_cmd_ = create_publisher<AckermannControlCommand>("output/raw_control_cmd", 1);    // 生のAckermannコマンド
     pub_lookahead_point_ = create_publisher<PointStamped>("/control/debug/lookahead_point", 1); // デバッグ用の先行点可視化
-    pub_debug_controller_ = create_publisher<std_msgs::msg::Float64>("/debug/debug_controller", rclcpp::QoS(1));
+
+    pub_debug_controller_ = create_publisher<std_msgs::msg::Float64>("/debug/cmd/controller", rclcpp::QoS(1));
+    pub_debug_msg_cmd_steer_out_ = create_publisher<std_msgs::msg::Float64>("/debug/cmd/steer_out", rclcpp::QoS(1));
+    pub_debug_msg_cmd_steer_pure_pursuit_ = create_publisher<std_msgs::msg::Float64>("/debug/cmd/steer_pure_pursuit", rclcpp::QoS(1));
+    pub_debug_msg_cmd_steer_stanley_e_cte_ = create_publisher<std_msgs::msg::Float64>("/debug/cmd/steer_stanley_e_cte", rclcpp::QoS(1));
+    pub_debug_msg_cmd_steer_stanley_e_heading_ = create_publisher<std_msgs::msg::Float64>("/debug/cmd/steer_stanley_e_heading", rclcpp::QoS(1));
+    pub_debug_msg_cmd_steer_stanley_steer_ = create_publisher<std_msgs::msg::Float64>("/debug/cmd/steer_stanley_steer", rclcpp::QoS(1));
+    pub_debug_msg_cmd_steer_pid_output_ = create_publisher<std_msgs::msg::Float64>("/debug/cmd/steer_pid_output", rclcpp::QoS(1));
+    pub_debug_msg_cmd_steer_pid_kp_ = create_publisher<std_msgs::msg::Float64>("/debug/cmd/steer_pid_kp", rclcpp::QoS(1));
+    pub_debug_msg_cmd_steer_pid_ki_ = create_publisher<std_msgs::msg::Float64>("/debug/cmd/steer_pid_ki", rclcpp::QoS(1));
+    pub_debug_msg_cmd_steer_pid_kd_ = create_publisher<std_msgs::msg::Float64>("/debug/cmd/steer_pid_kd", rclcpp::QoS(1));
+    pub_debug_msg_cmd_data1_ = create_publisher<std_msgs::msg::Float64>("/debug/cmd/data1", rclcpp::QoS(1));
+    pub_debug_msg_cmd_data2_ = create_publisher<std_msgs::msg::Float64>("/debug/cmd/data2", rclcpp::QoS(1));
+    pub_debug_msg_cmd_data3_ = create_publisher<std_msgs::msg::Float64>("/debug/cmd/data3", rclcpp::QoS(1));
+    pub_debug_msg_cmd_data4_ = create_publisher<std_msgs::msg::Float64>("/debug/cmd/data4", rclcpp::QoS(1));
+    pub_debug_msg_cmd_data5_ = create_publisher<std_msgs::msg::Float64>("/debug/cmd/data5", rclcpp::QoS(1));
 
     // Subscriberの設定
     const auto bv_qos = rclcpp::QoS(rclcpp::KeepLast(1)).durability_volatile().best_effort();
@@ -69,6 +84,38 @@ AckermannControlCommand zeroAckermannControlCommand(rclcpp::Time stamp)
     return cmd;
 }
 
+// 角度差を [-π, π] の範囲に正規化する関数
+double normalizeAngle(double angle) {
+    while (angle > M_PI) angle -= 2.0 * M_PI;
+    while (angle < -M_PI) angle += 2.0 * M_PI;
+    return angle;
+}
+
+double calcCurvature(geometry_msgs::msg::Point &p0, geometry_msgs::msg::Point &p1, geometry_msgs::msg::Point &p2)
+{
+    double a = std::hypot(p1.x - p0.x, p1.y - p0.y);
+    double b = std::hypot(p2.x - p1.x, p2.y - p1.y);
+    double c = std::hypot(p2.x - p0.x, p2.y - p0.y);
+    
+    // 退避（点が重なる/極端に近い場合）
+    constexpr double kEps = 1e-6;
+    if (a < kEps || b < kEps || c < kEps) {
+        return 0.0;
+    }
+
+    // 符号付き 2*三角形面積（z方向クロス積）
+    double z = (p1.x - p0.x) * (p2.y - p0.y) - (p1.y - p0.y) * (p2.x - p0.x);
+    
+    // 曲率 = 4A / (abc) = 2*z / (a*b*c)  （z は 2A の符号付き）
+    double denom = a * b * c;
+    
+    if (std::fabs(denom) < kEps) {
+        return 0.0;
+    }
+
+    return (2.0 * z) / denom;
+}
+
 // メイン制御ループ (タイマー動作関数)
 void SimplePurePursuit::onTimer()
 {
@@ -81,6 +128,20 @@ void SimplePurePursuit::onTimer()
 
     // Debugパラメータ 初期化
     std_msgs::msg::Float64 debug_msg_steer_controller;
+    std_msgs::msg::Float64 debug_msg_cmd_steer_out;
+    std_msgs::msg::Float64 debug_msg_cmd_steer_pure_pursuit;
+    std_msgs::msg::Float64 debug_msg_cmd_steer_stanley_e_cte;
+    std_msgs::msg::Float64 debug_msg_cmd_steer_stanley_e_heading;
+    std_msgs::msg::Float64 debug_msg_cmd_steer_stanley_steer;
+    std_msgs::msg::Float64 debug_msg_cmd_steer_pid_output;
+    std_msgs::msg::Float64 debug_msg_cmd_steer_pid_kp;
+    std_msgs::msg::Float64 debug_msg_cmd_steer_pid_ki;
+    std_msgs::msg::Float64 debug_msg_cmd_steer_pid_kd;
+    std_msgs::msg::Float64 debug_msg_cmd_data1;
+    std_msgs::msg::Float64 debug_msg_cmd_data2;
+    std_msgs::msg::Float64 debug_msg_cmd_data3;
+    std_msgs::msg::Float64 debug_msg_cmd_data4;
+    std_msgs::msg::Float64 debug_msg_cmd_data5;
 
     // Loopパラメータ
     static long int loop_counter = 0;
@@ -91,7 +152,8 @@ void SimplePurePursuit::onTimer()
     // double pid_kd = 0.025;
     double pid_kp = 0.2;
     double pid_ki = 0.001;
-    double pid_kd = 0.05;
+    double pid_kd = 0.0;
+    // double pid_kd = 0.05;
     static double pid_integ = 0.0;
     static double pid_prev_error = 0.0;
     
@@ -121,6 +183,22 @@ void SimplePurePursuit::onTimer()
     } else {
         // 最近点の目標値を取得
         TrajectoryPoint closet_traj_point = trajectory_->points.at(closet_traj_point_idx);
+
+        // 最近点の曲率を取得
+        int rad_cal_diff = 2; 
+        int lookahead_curvature = 5;
+        int last_idx = static_cast<int>(trajectory_->points.size()) - 1;
+
+        int i0 = closet_traj_point_idx + lookahead_curvature;
+        // int i0 = std::min(closet_traj_point_idx + lookahead_curvature, last_idx);
+        int i1 = std::min(i0 + rad_cal_diff, last_idx);
+        int i2 = std::min(i1 + rad_cal_diff, last_idx);
+
+        auto &p0 = trajectory_->points[i0].pose.position;
+        auto &p1 = trajectory_->points[i1].pose.position;
+        auto &p2 = trajectory_->points[i2].pose.position;
+
+        double curvature = calcCurvature(p0, p1, p2);
 
         // 目標速度値の計算 (外部設定値 or Trajectoryの設定値)
         double target_longitudinal_vel;
@@ -154,19 +232,17 @@ void SimplePurePursuit::onTimer()
         auto lookahead_point_itr = std::find_if(
             trajectory_->points.begin() + closet_traj_point_idx, trajectory_->points.end(),
             [&](const TrajectoryPoint & point) {
-                return std::hypot(point.pose.position.x - rear_x, point.pose.position.y - rear_y) >=
-                             lookahead_distance;
+                return std::hypot(point.pose.position.x - rear_x, point.pose.position.y - rear_y) >= lookahead_distance;
             });
 
         // Trajectoryポイントが最終点似到達している場合は、スタートから再計算し直す。
         if (lookahead_point_itr == trajectory_->points.end()) {
             // lookahead_point_itr = trajectory_->points.end() - 1;
             // lookahead_point_itr = trajectory_->points.begin() + 20;
-          lookahead_point_itr = std::find_if(
+            lookahead_point_itr = std::find_if(
             trajectory_->points.begin(), trajectory_->points.end(),
             [&](const TrajectoryPoint & point) {
-                return std::hypot(point.pose.position.x - rear_x, point.pose.position.y - rear_y) >=
-                             lookahead_distance;
+                return std::hypot(point.pose.position.x - rear_x, point.pose.position.y - rear_y) >= lookahead_distance;
             });
         }
 
@@ -188,11 +264,12 @@ void SimplePurePursuit::onTimer()
         
         // ① Pure Pursuit計算
         double alpha = std::atan2(lookahead_point_y - rear_y, lookahead_point_x - rear_x) - yaw;
+        
         double pure_pursuit_steer =
             steering_tire_angle_gain_ * std::atan2(2.0 * wheel_base_ * std::sin(alpha), lookahead_distance);
 
         // PID制御
-        double error = alpha;  
+        double error = normalizeAngle(alpha);  
         double const dt = 0.01;
 
         pid_integ += error * dt;
@@ -216,10 +293,23 @@ void SimplePurePursuit::onTimer()
         // Stanleyの操舵角 (横ずれ誤差 + ヘディング誤差)
         double stanley_gain_ = 0.3;
         double velocity_soft = 0.1;
-        double stanley_steer = e_heading + std::atan2(stanley_gain_ * e_cte, current_longitudinal_vel + velocity_soft);
+        double stanley_steer = normalizeAngle(e_heading + std::atan2(stanley_gain_ * e_cte, current_longitudinal_vel + velocity_soft));
       
         // 制御量の決定
-        double combined_steer = 1.0 * pure_pursuit_steer + (0.0) * stanley_steer + pid_output;  // 重み付け可
+        // double combined_steer = 1.0 * pure_pursuit_steer + (0.0) * stanley_steer + (0.0) * pid_output + (1.0) * curvature;  // 重み付け可
+        // double combined_pure_pursuit_gain = 0.50;
+        // double combined_curvature_gain = 1.6;
+        // double combined_eheading_gain = 0.3;
+        // double combined_e_cte_gain = 0.05;
+        double combined_pure_pursuit_gain = 0.55;
+        double combined_curvature_gain = 1.6;
+        double combined_eheading_gain = 0.25;
+        double combined_e_cte_gain = 0.05;
+
+        double combined_steer = combined_pure_pursuit_gain * pure_pursuit_steer
+                                 + combined_curvature_gain * curvature
+                                 + combined_eheading_gain * e_heading
+                                 + combined_e_cte_gain * e_cte;
 
         // LPF適用
         double calc_result_steer_lpf =
@@ -228,6 +318,7 @@ void SimplePurePursuit::onTimer()
         y_prev_lpf = calc_result_steer_lpf;
 
         cmd.lateral.steering_tire_angle = calc_result_steer_lpf;
+        // cmd.lateral.steering_tire_angle = combined_steer;
 
         // Original Pure Pursuit
         // double alpha = std::atan2(lookahead_point_y - rear_y, lookahead_point_x - rear_x) -
@@ -242,8 +333,40 @@ void SimplePurePursuit::onTimer()
         // cmd.lateral.steering_tire_angle = calc_result_steer_lpf;
 
         // 検証用 Debug出力
+        debug_msg_cmd_steer_out.data = calc_result_steer_lpf;
+        debug_msg_cmd_steer_pure_pursuit.data = pure_pursuit_steer;
+        debug_msg_cmd_steer_stanley_e_cte.data = e_cte;
+        debug_msg_cmd_steer_stanley_e_heading.data = e_heading;
+        debug_msg_cmd_steer_stanley_steer.data = stanley_steer;
+        debug_msg_cmd_steer_pid_output.data = pid_output;
+        debug_msg_cmd_steer_pid_kp.data = pid_kp * error;
+        debug_msg_cmd_steer_pid_ki.data = pid_ki * pid_integ;
+        debug_msg_cmd_steer_pid_kd.data = pid_kd * derivative;
         debug_msg_steer_controller.data = pure_pursuit_steer;
+        debug_msg_cmd_data1.data = alpha;
+        debug_msg_cmd_data2.data = combined_pure_pursuit_gain * pure_pursuit_steer;
+        debug_msg_cmd_data3.data = combined_curvature_gain * curvature;
+        debug_msg_cmd_data4.data = combined_eheading_gain;
+        debug_msg_cmd_data5.data = combined_e_cte_gain * e_cte;
+
+
+        pub_debug_msg_cmd_steer_out_->publish(debug_msg_cmd_steer_out);
+        pub_debug_msg_cmd_steer_pure_pursuit_->publish(debug_msg_cmd_steer_pure_pursuit);
+        pub_debug_msg_cmd_steer_stanley_e_cte_->publish(debug_msg_cmd_steer_stanley_e_cte);
+        pub_debug_msg_cmd_steer_stanley_e_heading_->publish(debug_msg_cmd_steer_stanley_e_heading);
+        pub_debug_msg_cmd_steer_stanley_steer_->publish(debug_msg_cmd_steer_stanley_steer);
+        pub_debug_msg_cmd_steer_pid_output_->publish(debug_msg_cmd_steer_pid_output);
+        pub_debug_msg_cmd_steer_pid_kp_->publish(debug_msg_cmd_steer_pid_kp);
+        pub_debug_msg_cmd_steer_pid_ki_->publish(debug_msg_cmd_steer_pid_ki);
+        pub_debug_msg_cmd_steer_pid_kd_->publish(debug_msg_cmd_steer_pid_kd);
+        pub_debug_msg_cmd_data1_->publish(debug_msg_cmd_data1);
+        pub_debug_msg_cmd_data2_->publish(debug_msg_cmd_data2);
+        pub_debug_msg_cmd_data3_->publish(debug_msg_cmd_data3);
+        pub_debug_msg_cmd_data4_->publish(debug_msg_cmd_data4);
+        pub_debug_msg_cmd_data5_->publish(debug_msg_cmd_data5);
+ 
         pub_debug_controller_->publish(debug_msg_steer_controller);
+
 
     }
 
