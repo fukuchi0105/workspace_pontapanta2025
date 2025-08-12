@@ -1,0 +1,30 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug SimpleTrajectoryGenerator Node",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/install/simple_trajectory_generator/lib/simple_trajectory_generator/simple_trajectory_generator_node",
+      "args": [
+        "--ros-args",
+        "-r", "__node:=simple_trajectory_generator_node",
+        "-p", "csv_path:=/aichallenge/workspace/src/aichallenge_submit/simple_trajectory_generator/data/raceline_awsim_30km_mod.csv",
+        "-p", "z:=6.5"
+      ],
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "/usr/bin/gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ],
+      "preLaunchTask": "Build simple_trajectory_generator"
+    }
+  ]
+}

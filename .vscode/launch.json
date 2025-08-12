@@ -1,28 +1,3 @@
-// // .vscode/launch.json
-// {
-//   "version": "0.2.0",
-//   "configurations": [
-//     {
-//       "name": "ROS2: Attach",
-//       "type": "ros2",
-//       "request": "attach",
-//       "preLaunchTask": "build-debug"
-//     }
-//   ]
-// }
-// {
-//   "version": "0.2.0",
-//   "configurations": [
-//     {
-//       "name": "ROS2: Debug run_evaluation",
-//       "type": "ros2",
-//       "request": "debug_launch",
-//       "target": "${workspaceFolder}/src/aichallenge_submit/aichallenge_submit_launch/launch/run_evaluation_wrapper.launch.py",
-//       "envFile": "${workspaceFolder}/local_humble_ws.env",
-//       "args": []
-//     }
-//   ]
-// }
 {
   "version": "0.2.0",
   "configurations": [
@@ -30,16 +5,19 @@
       "name": "Debug TrajectoryFollower Node",
       "type": "cppdbg",
       "request": "launch",
-      "program": "${workspaceFolder}/install/trajectory_follower_nobuakif/lib/trajectory_follower_nobuakif/trajectory_follower_nobuakif",
+      "program": "${workspaceFolder}/install/trajectory_follower_nobuakif/lib/trajectory_follower_nobuakif/trajectory_follower_nobuakif_node",
       "args": [
         "--ros-args",
         "-r", "__node:=trajectory_follower_nobuakif_node",
-        "-p", "use_external_target_vel:=false",
-        "-p", "external_target_vel:=10.0",
+        "-p", "use_external_target_vel:=true",
+        "-p", "external_target_vel:=34.9",
+        "-p", "yaw_feedback_gain:=0.0",
+        "-p", "yaw_rate_feedback_gain:=1.0",
+        "-p", "steering_feedback_gain:=0.0",
+        "-p", "position_gain_forward:=0.0",
+        "-p", "vehicle_model:=1", // 0 = Kinematic, 1 = Dynamic
+        "-p", "lookahead_distance:=1.0",
         "-p", "lookahead_gain:=0.5",
-        "-p", "lookahead_min_distance:=3.5",
-        "-p", "speed_proportional_gain:=1.0",
-        "-p", "steering_tire_angle_gain:=1.0",
         "--remap", "input/kinematics:=/localization/kinematic_state",
         "--remap", "input/trajectory:=/planning/scenario_planning/trajectory",
         "--remap", "output/control_cmd:=/control/command/control_cmd"
@@ -60,12 +38,3 @@
     }
   ]
 }
-// {
-//   "name": "Attach to ROS2 via gdbserver",
-//   "type": "cppdbg",
-//   "request": "attach",
-//   "program": "/aichallenge/workspace/install/trajectory_follower_nobuakif/lib/trajectory_follower_nobuakif/trajectory_follower_nobuakif",
-//   "miDebuggerServerAddress": "localhost:3000",
-//   "cwd": "${workspaceFolder}",
-//   "MIMode": "gdb"
-// }

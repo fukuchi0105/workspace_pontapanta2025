@@ -8,5 +8,8 @@
         "/opt/ros/humble/local/lib/python3.10/dist-packages"
     ],
     "ros.distro": "humble",
-    "cmake.sourceDirectory": "/aichallenge/workspace/src/aichallenge_submit/aichallenge_submit_launch"
+    "cmake.sourceDirectory": "/aichallenge/workspace/src/aichallenge_submit/aichallenge_submit_launch",
+    "cmake.configureSettings": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+    }
 }

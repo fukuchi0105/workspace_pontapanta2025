@@ -10,6 +10,15 @@
         "kind": "build",
         "isDefault": true
       }
+    },
+    {
+      "label": "Build simple_trajectory_generator",
+      "type": "shell",
+      "command": "colcon build --packages-select simple_trajectory_generator --cmake-args -DCMAKE_BUILD_TYPE=Debug",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
     }
   ]
 }

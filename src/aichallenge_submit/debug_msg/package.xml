@@ -1,22 +1,21 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>simple_trajectory_generator</name>
+  <name>debug_msg</name>
   <version>0.0.0</version>
   <description>TODO: Package description</description>
-  <maintainer email="taiki.tanaka@tier4.jp">taiki tanaka</maintainer>
+  <maintainer email="fukuti0105@yahoo.co.jp">nobuakif</maintainer>
   <license>TODO: License declaration</license>
 
+  <depend>std_msgs</depend>
   <buildtool_depend>ament_cmake</buildtool_depend>
-
-  <depend>rclcpp</depend>
-  <depend>autoware_auto_planning_msgs</depend>
-  <depend>tf2</depend>
-  <depend>tf2_geometry_msgs</depend>
+  <build_depend>rosidl_default_generators</build_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
+  <exec_depend>rosidl_default_runtime</exec_depend>
 
+  <member_of_group>rosidl_interface_packages</member_of_group>
   <export>
     <build_type>ament_cmake</build_type>
   </export>

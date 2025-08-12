@@ -10,6 +10,8 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <optional>
 #include <rclcpp/rclcpp.hpp>
+#include <autoware_auto_vehicle_msgs/msg/steering_report.hpp>
+#include <debug_msg/msg/stanley_debug.hpp>
 
 namespace trajectory_follower_nobuakif {
 
@@ -20,6 +22,8 @@ using geometry_msgs::msg::Pose;
 using geometry_msgs::msg::PointStamped;
 using geometry_msgs::msg::Twist;
 using nav_msgs::msg::Odometry;
+using autoware_auto_vehicle_msgs::msg::SteeringReport;
+using debug_msg::msg::StanleyDebug;
 
 class TrajectoryFollower : public rclcpp::Node {
  public:
@@ -28,12 +32,14 @@ class TrajectoryFollower : public rclcpp::Node {
   // subscribers
   rclcpp::Subscription<Odometry>::SharedPtr sub_kinematics_;
   rclcpp::Subscription<Trajectory>::SharedPtr sub_trajectory_;
-  
+  rclcpp::Subscription<SteeringReport>::SharedPtr sub_steering_;
+
   // publishers
   rclcpp::Publisher<AckermannControlCommand>::SharedPtr pub_cmd_;
   rclcpp::Publisher<AckermannControlCommand>::SharedPtr pub_raw_cmd_;
   rclcpp::Publisher<PointStamped>::SharedPtr pub_lookahead_point_;
   rclcpp::Publisher<PointStamped>::SharedPtr pub_debug_pt_; // publisher for debug point
+  rclcpp::Publisher<StanleyDebug>::SharedPtr pub_debug_data_; // publisher for debug data
 
   // timer
   rclcpp::TimerBase::SharedPtr timer_;
@@ -41,11 +47,13 @@ class TrajectoryFollower : public rclcpp::Node {
   // updated by subscribers
   Trajectory::SharedPtr trajectory_;
   Odometry::SharedPtr odometry_;
+  SteeringReport::SharedPtr steering_;
 
   // stanley control parameters
   const int vehicle_model_; // 0 = Kinematic, 1 = Dynamic
   const double position_gain_forward_;
   const double position_gain_reverse_;
+  const double yaw_feedback_gain_; // gain for yaw feedback
   const double yaw_rate_feedback_gain_;
   const double steering_feedback_gain_;
   const double wheel_base_;
@@ -59,14 +67,17 @@ class TrajectoryFollower : public rclcpp::Node {
   const double external_target_vel_;
 
   double prev_delta_; // previous steering angle
+  double node_start_time_;
+  double prev_tire_angle_; // previous tire angle for feedback
   // // pure pursuit parameters
-  // const double lookahead_distance_;
-  // const double lookahead_gain_;
+  const double lookahead_distance_;
+  const double lookahead_gain_;
   // const double lookahead_min_distance_;
   // const double steering_tire_angle_gain_;
 
 
  private:
+  void testTireModel(const double elapsedTime);
   void onTimer();
   bool subscribeMessageAvailable();
 };
