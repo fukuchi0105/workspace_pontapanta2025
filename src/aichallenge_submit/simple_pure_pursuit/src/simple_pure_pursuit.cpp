@@ -126,6 +126,11 @@ void SimplePurePursuit::onTimer()
     static double y_prev_lpf = 0;
     static double x_prev_lpf = 0;
 
+    static int lap_count = 0;
+    static int goal_reached_prev = 0;
+
+    int ignore_points_garage = 100;
+
     // Debugパラメータ 初期化
     std_msgs::msg::Float64 debug_msg_steer_controller;
     std_msgs::msg::Float64 debug_msg_cmd_steer_out;
@@ -179,8 +184,17 @@ void SimplePurePursuit::onTimer()
         cmd.longitudinal.acceleration = -10.0;
         RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000 /*ms*/, "reached to the goal");
 
+        // --- 周回カウント ---
+        if (!goal_reached_prev) {   // 前回未到達ならカウント
+          lap_count++;
+          // RCLCPP_INFO(get_logger(), "Lap count: %d", lap_count_);
+          goal_reached_prev = 1;  // ゴール済みにセット
+        }
+
     // ゴールでなければ、制御動作
     } else {
+        goal_reached_prev = false;
+
         // 最近点の目標値を取得
         TrajectoryPoint closet_traj_point = trajectory_->points.at(closet_traj_point_idx);
 
@@ -240,7 +254,7 @@ void SimplePurePursuit::onTimer()
             // lookahead_point_itr = trajectory_->points.end() - 1;
             // lookahead_point_itr = trajectory_->points.begin() + 20;
             lookahead_point_itr = std::find_if(
-            trajectory_->points.begin(), trajectory_->points.end(),
+            trajectory_->points.begin() + ignore_points_garage, trajectory_->points.end(), // ガレージ走行ラインの軌跡は無視する
             [&](const TrajectoryPoint & point) {
                 return std::hypot(point.pose.position.x - rear_x, point.pose.position.y - rear_y) >= lookahead_distance;
             });
@@ -301,11 +315,19 @@ void SimplePurePursuit::onTimer()
         // double combined_curvature_gain = 1.6;
         // double combined_eheading_gain = 0.3;
         // double combined_e_cte_gain = 0.05;
-        double combined_pure_pursuit_gain = 0.55;
-        double combined_curvature_gain = 1.6;
+
+        // Best (Not Complete)
+        // double combined_pure_pursuit_gain = 0.65;
+        // double combined_curvature_gain = 1.5;
+        // double combined_eheading_gain = 0.25;
+        // double combined_e_cte_gain = 0.05;
+        
+        // Working
+        double combined_pure_pursuit_gain = 0.65;
+        double combined_curvature_gain = 1.5;
         double combined_eheading_gain = 0.25;
         double combined_e_cte_gain = 0.05;
-
+        
         double combined_steer = combined_pure_pursuit_gain * pure_pursuit_steer
                                  + combined_curvature_gain * curvature
                                  + combined_eheading_gain * e_heading
@@ -346,7 +368,7 @@ void SimplePurePursuit::onTimer()
         debug_msg_cmd_data1.data = alpha;
         debug_msg_cmd_data2.data = combined_pure_pursuit_gain * pure_pursuit_steer;
         debug_msg_cmd_data3.data = combined_curvature_gain * curvature;
-        debug_msg_cmd_data4.data = combined_eheading_gain;
+        debug_msg_cmd_data4.data = combined_eheading_gain * e_heading;
         debug_msg_cmd_data5.data = combined_e_cte_gain * e_cte;
 
 
