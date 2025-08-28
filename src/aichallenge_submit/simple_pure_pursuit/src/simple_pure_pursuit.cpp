@@ -195,15 +195,18 @@ void SimplePurePursuit::onTimer()
     } else {
         goal_reached_prev = false;
 
+        // 現在車速の取得
+        double current_longitudinal_vel = odometry_->twist.twist.linear.x;
+
         // 最近点の目標値を取得
         TrajectoryPoint closet_traj_point = trajectory_->points.at(closet_traj_point_idx);
 
         // 最近点の曲率を取得
-        int rad_cal_diff = 2; 
-        int lookahead_curvature = 5;
+        int rad_cal_diff = 1; 
+        int lookahead_curvature = static_cast<int>(current_longitudinal_vel * 0.5); //遅れ時間×車速(mps)で、ターゲットの距離を見る
         int last_idx = static_cast<int>(trajectory_->points.size()) - 1;
 
-        int i0 = closet_traj_point_idx + lookahead_curvature;
+        int i0 = closet_traj_point_idx + lookahead_curvature + 4;
         // int i0 = std::min(closet_traj_point_idx + lookahead_curvature, last_idx);
         int i1 = std::min(i0 + rad_cal_diff, last_idx);
         int i2 = std::min(i1 + rad_cal_diff, last_idx);
@@ -221,7 +224,6 @@ void SimplePurePursuit::onTimer()
         } else {
             target_longitudinal_vel = closet_traj_point.longitudinal_velocity_mps;
         }
-        double current_longitudinal_vel = odometry_->twist.twist.linear.x;
 
         // 目標加速度の計算 (目標速度 - 現在速度) × ゲイン
         cmd.longitudinal.speed = target_longitudinal_vel;
@@ -302,7 +304,7 @@ void SimplePurePursuit::onTimer()
         e_cte = std::sqrt(e_cte);
 
         // ヘディング誤差 e_heading
-        double e_heading = traj_yaw - yaw;
+        double e_heading = normalizeAngle(traj_yaw - yaw);
 
         // Stanleyの操舵角 (横ずれ誤差 + ヘディング誤差)
         double stanley_gain_ = 0.3;
@@ -323,13 +325,36 @@ void SimplePurePursuit::onTimer()
         // double combined_e_cte_gain = 0.05;
         
         // Working
-        double combined_pure_pursuit_gain = 0.65;
-        double combined_curvature_gain = 1.5;
-        double combined_eheading_gain = 0.25;
-        double combined_e_cte_gain = 0.05;
-        
+        double combined_pure_pursuit_gain;
+        double combined_curvature_gain;
+        double combined_eheading_gain;
+        double combined_e_cte_gain;
+        int lookahead_index = std::distance(trajectory_->points.begin(), lookahead_point_itr);
+        if (lookahead_index < ignore_points_garage) {
+            combined_pure_pursuit_gain = 0.6;
+            combined_curvature_gain = 1.5;
+            combined_eheading_gain = 0.25;
+            combined_e_cte_gain = 0.05;
+        }
+        else {
+            combined_pure_pursuit_gain = 0.20;
+            combined_curvature_gain = 1.85;
+            combined_eheading_gain = 0.2;
+            combined_e_cte_gain = 0.0;
+        }
+        // combined_pure_pursuit_gain = 0.25;
+        // combined_curvature_gain = 1.85;
+        // combined_eheading_gain = 0.0;
+        // combined_e_cte_gain = 0.0;
+
+        double combined_curvature_result = combined_curvature_gain * curvature;
+        if (combined_curvature_result > 0.45 || combined_curvature_result < -0.45) {
+            combined_curvature_result *= 2.0;
+        }
+
+
         double combined_steer = combined_pure_pursuit_gain * pure_pursuit_steer
-                                 + combined_curvature_gain * curvature
+                                 + combined_curvature_result
                                  + combined_eheading_gain * e_heading
                                  + combined_e_cte_gain * e_cte;
 
@@ -365,9 +390,9 @@ void SimplePurePursuit::onTimer()
         debug_msg_cmd_steer_pid_ki.data = pid_ki * pid_integ;
         debug_msg_cmd_steer_pid_kd.data = pid_kd * derivative;
         debug_msg_steer_controller.data = pure_pursuit_steer;
-        debug_msg_cmd_data1.data = alpha;
+        debug_msg_cmd_data1.data = current_longitudinal_vel;
         debug_msg_cmd_data2.data = combined_pure_pursuit_gain * pure_pursuit_steer;
-        debug_msg_cmd_data3.data = combined_curvature_gain * curvature;
+        debug_msg_cmd_data3.data = combined_curvature_result;
         debug_msg_cmd_data4.data = combined_eheading_gain * e_heading;
         debug_msg_cmd_data5.data = combined_e_cte_gain * e_cte;
 
