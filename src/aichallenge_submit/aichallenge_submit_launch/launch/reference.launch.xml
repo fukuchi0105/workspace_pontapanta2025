@@ -119,7 +119,7 @@
       <!-- Customizable -->
       <node pkg="simple_trajectory_generator" exec="simple_trajectory_generator_node" name="simple_trajectory_generator" output="screen">
             <!-- <param name="csv_path" value="$(find-pkg-share simple_trajectory_generator)/data/raceline_awsim_30km.csv"/> -->
-            <param name="csv_path" value="$(find-pkg-share simple_trajectory_generator)/data/20250829_0213_Trajectory.csv"/>
+            <param name="csv_path" value="$(find-pkg-share simple_trajectory_generator)/data/20250901_0002_Trajectory.csv"/>
             <!-- <param name="csv_path" value="$(find-pkg-share simple_trajectory_generator)/data/20250828_0052_Trajectory_debug.csv"/> -->
             <param name="z" value="6.5"/>
       </node>
@@ -138,7 +138,7 @@
     <param name="lookahead_gain" value="0.25"/>
     <!-- <param name="lookahead_min_distance" value="3.5"/> -->
     <param name="lookahead_min_distance" value="2.5"/>
-    <param name="speed_proportional_gain" value="1.0"/>
+    <param name="speed_proportional_gain" value="10.0"/>
     <!-- <param name="steering_tire_angle_gain" value="$(var steering_tire_angle_gain_var)"/> -->
     <param name="steering_tire_angle_gain" value="1.0"/>
     <!-- <param name="stanley_gain" value="1.0"/> -->

@@ -229,6 +229,7 @@ void SimplePurePursuit::onTimer()
         cmd.longitudinal.speed = target_longitudinal_vel;
         cmd.longitudinal.acceleration =
             speed_proportional_gain_ * (target_longitudinal_vel - current_longitudinal_vel);
+        // cmd.longitudinal.acceleration = 19.5;
 
         ///////////////////////////////////////////////////////////////////////////////////////////////////
         // 操舵量の計算
@@ -238,11 +239,14 @@ void SimplePurePursuit::onTimer()
         double lookahead_distance = lookahead_gain_ * target_longitudinal_vel + lookahead_min_distance_;
 
         // リアの車軸中心座標とヨー角を計算
-        double rear_x = odometry_->pose.pose.position.x -
-                                        wheel_base_ / 2.0 * std::cos(odometry_->pose.pose.orientation.z);
-        double rear_y = odometry_->pose.pose.position.y -
-                                        wheel_base_ / 2.0 * std::sin(odometry_->pose.pose.orientation.z);
-        double yaw = tf2::getYaw(odometry_->pose.pose.orientation);
+        // double rear_x = odometry_->pose.pose.position.x -
+        //                                 wheel_base_ / 2.0 * std::cos(odometry_->pose.pose.orientation.z);
+        // double rear_y = odometry_->pose.pose.position.y -
+        //                                 wheel_base_ / 2.0 * std::sin(odometry_->pose.pose.orientation.z);
+        // double yaw = tf2::getYaw(odometry_->pose.pose.orientation);
+        const double yaw = tf2::getYaw(odometry_->pose.pose.orientation);
+        const double rear_x = odometry_->pose.pose.position.x - (wheel_base_/2.0) * std::cos(yaw);
+        const double rear_y = odometry_->pose.pose.position.y - (wheel_base_/2.0) * std::sin(yaw);
 
         // Trajectoryポイントを探索 
         auto lookahead_point_itr = std::find_if(
@@ -348,10 +352,9 @@ void SimplePurePursuit::onTimer()
         // combined_e_cte_gain = 0.0;
 
         double combined_curvature_result = combined_curvature_gain * curvature;
-        if (combined_curvature_result > 0.45 || combined_curvature_result < -0.45) {
-            combined_curvature_result *= 2.0;
-        }
-
+        // if (combined_curvature_result > 0.45 || combined_curvature_result < -0.45) {
+        //     combined_curvature_result *= 2.0;
+        // }
 
         double combined_steer = combined_pure_pursuit_gain * pure_pursuit_steer
                                  + combined_curvature_result
@@ -390,8 +393,9 @@ void SimplePurePursuit::onTimer()
         debug_msg_cmd_steer_pid_ki.data = pid_ki * pid_integ;
         debug_msg_cmd_steer_pid_kd.data = pid_kd * derivative;
         debug_msg_steer_controller.data = pure_pursuit_steer;
-        debug_msg_cmd_data1.data = current_longitudinal_vel;
-        debug_msg_cmd_data2.data = combined_pure_pursuit_gain * pure_pursuit_steer;
+        debug_msg_cmd_data1.data = target_longitudinal_vel;
+        debug_msg_cmd_data2.data = speed_proportional_gain_ * (target_longitudinal_vel - current_longitudinal_vel);
+        // debug_msg_cmd_data2.data = combined_pure_pursuit_gain * pure_pursuit_steer;
         debug_msg_cmd_data3.data = combined_curvature_result;
         debug_msg_cmd_data4.data = combined_eheading_gain * e_heading;
         debug_msg_cmd_data5.data = combined_e_cte_gain * e_cte;
